@@ -10,13 +10,15 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class SmtpProxy {
-    
 
+    public static AtomicBoolean running = new AtomicBoolean(true);
     public static void main(String[] args) {
+
         Thread proxyThread = new Thread(new ProxyServer());
         Thread appThread = new Thread(new EmailApplication());
 
@@ -37,8 +39,8 @@ class EmailApplication implements Runnable {
     @Override
     public void run() {
         System.out.println("Welcome to Your Company's Email application!");
-        boolean running = true;
-        while (running) {
+        
+        while (SmtpProxy.running.get()) {
             System.out.println("Type 'send' to compose and send an email, 'view' to view emails, or 'exit' to quit:");
             String command = System.console().readLine();
             if (command.equalsIgnoreCase("send")) {
@@ -46,7 +48,7 @@ class EmailApplication implements Runnable {
             } else if (command.equalsIgnoreCase("view")) {
                 viewEmails();
             } else if (command.equalsIgnoreCase("exit")) {
-                running = false;
+                SmtpProxy.running.set(false);
             } else {
                 System.out.println("Unknown command. Please type 'send', 'view', or 'exit'.");
             }
@@ -97,6 +99,8 @@ class EmailApplication implements Runnable {
 
             writer.write("QUIT\r\n");
             writer.flush();
+
+            socket.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -116,7 +120,7 @@ class ProxyServer implements Runnable {
     public void run() {
          try (ServerSocket proxySocket = new ServerSocket(PROXY_PORT)) {
             System.out.println("SmtpProxy listening on port " + PROXY_PORT);
-            while (true) {
+            while (SmtpProxy.running.get()) {
                 Socket clientSocket = proxySocket.accept();
                 try {
                     Socket serverSocket = new Socket(SMTP_SERVER_IP, SMTP_SERVER_PORT);
@@ -130,6 +134,7 @@ class ProxyServer implements Runnable {
                     try { clientSocket.close(); } catch (IOException ex) {}
                 }
             }
+            proxySocket.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -188,7 +193,7 @@ class ProxyTask implements Runnable {
                         // In DATA mode: filter lines, insert disclaimer before terminating dot
                         if (line.equals(".")) {
                             if (illuminatiFound) {
-                                writer.write("Hello World");
+                                writer.write("Hello World.\r\n");
                             } else {
                                 writer.write(dataBuffer.toString());
                             }
