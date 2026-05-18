@@ -15,12 +15,106 @@ import java.util.regex.Pattern;
 
 public class SmtpProxy {
     
-    private static final int PROXY_PORT = 55555;
-    private static final String SMTP_SERVER_IP = "127.0.0.1";
-    private static final int SMTP_SERVER_PORT = 25;
 
     public static void main(String[] args) {
-        try (ServerSocket proxySocket = new ServerSocket(PROXY_PORT)) {
+        Thread proxyThread = new Thread(new ProxyServer());
+        Thread appThread = new Thread(new EmailApplication());
+
+        proxyThread.start();
+        appThread.start();
+    }
+}
+
+class EmailApplication implements Runnable {
+    private String recipient;
+    private String subject;
+    private String body;
+
+    public EmailApplication() {
+        
+    }
+
+    @Override
+    public void run() {
+        System.out.println("Welcome to Your Company's Email application!");
+        boolean running = true;
+        while (running) {
+            System.out.println("Type 'send' to compose and send an email, 'view' to view emails, or 'exit' to quit:");
+            String command = System.console().readLine();
+            if (command.equalsIgnoreCase("send")) {
+                sendEmail();
+            } else if (command.equalsIgnoreCase("view")) {
+                viewEmails();
+            } else if (command.equalsIgnoreCase("exit")) {
+                running = false;
+            } else {
+                System.out.println("Unknown command. Please type 'send', 'view', or 'exit'.");
+            }
+        }
+    }
+
+    private void sendEmail() {
+        System.out.println("Enter recipient email address:");
+        recipient = System.console().readLine();
+        System.out.println("Enter email subject:");
+        subject = System.console().readLine();
+        System.out.println("Enter email body (end with a single dot on a line):");
+        StringBuilder bodyBuilder = new StringBuilder();
+        String line;
+        while (!(line = System.console().readLine()).equals(".")) {
+            bodyBuilder.append(line).append("\r\n");
+        }
+        body = bodyBuilder.toString();
+
+        System.out.println("Email composed. Connecting to Proxy Server...");
+        try (Socket socket = new Socket("localhost", 55555)) {
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.ISO_8859_1));
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.ISO_8859_1));
+
+            // Simple SMTP conversation
+            reader.readLine(); // Read server greeting
+            writer.write("HELO localhost\r\n");
+            writer.flush();
+            
+            // Read HELO response
+            System.out.println(reader.readLine());
+
+            writer.write("MAIL FROM:<" + recipient + ">\r\n");
+            writer.flush();
+            System.out.println(reader.readLine()); // Read MAIL FROM response
+            writer.write("RCPT TO:<" + recipient + ">\r\n");
+            writer.flush();
+            System.out.println(reader.readLine()); // Read RCPT TO response
+            writer.write("DATA\r\n");
+            writer.flush();
+            System.out.println(reader.readLine()); // Read DATA response
+            writer.write("Subject: " + subject + "\r\n");
+            writer.write("\r\n"); // Blank line between headers and body
+            writer.write(body);
+            writer.write(".\r\n"); // End of DATA
+            writer.flush();
+            System.out.println(reader.readLine()); // Read final response
+
+            writer.write("QUIT\r\n");
+            writer.flush();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void viewEmails() {
+        System.out.println("Viewing emails is not implemented in this demo.");
+    }
+}
+
+class ProxyServer implements Runnable {
+    private static final int PROXY_PORT = 55555;
+    private static final String SMTP_SERVER_IP = "raspberrypi.local";
+    private static final int SMTP_SERVER_PORT = 25;
+
+    @Override
+    public void run() {
+         try (ServerSocket proxySocket = new ServerSocket(PROXY_PORT)) {
             System.out.println("SmtpProxy listening on port " + PROXY_PORT);
             while (true) {
                 Socket clientSocket = proxySocket.accept();
